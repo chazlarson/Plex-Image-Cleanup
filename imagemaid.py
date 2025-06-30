@@ -203,9 +203,11 @@ def run_imagemaid(attrs):
 
                 # Download DB
                 logger.separator("Database")
-                dbpath = os.path.join(config_dir, plex_db_name)
                 temp_dir = os.path.join(config_dir, "temp")
-
+                logger.info(f"Downloaded database to temp dir: {temp_dir}")
+                dbpath = os.path.join(config_dir, plex_db_name)
+                logger.info(f"Writing downloaded database to: {dbpath}")
+                
                 is_usable = False
                 if args["existing"]:
                     if os.path.exists(dbpath):
@@ -224,9 +226,16 @@ def run_imagemaid(attrs):
                 else:
                     report.append([("", f"{'Copied' if local_run else 'Downloaded'} New Database")])
                     if os.path.exists(dbpath):
+                        logger.info(f"Removing existing: {dbpath}")
                         os.remove(dbpath)
+                    else:
+                        logger.info(f"NOT FOUND: {dbpath}")
                     if os.path.exists(temp_dir):
+                        logger.info(f"Removing existing: {temp_dir}")
                         shutil.rmtree(temp_dir)
+                    else:
+                        logger.info(f"NOT FOUND: {temp_dir}")
+                    logger.info(f"Creating: {temp_dir}")
                     os.makedirs(temp_dir)
                     if local_run:
                         logger.info(f"Copying database from {os.path.join(databases_dir, plex_db_name)}", start="database")
@@ -243,6 +252,7 @@ def run_imagemaid(attrs):
                         if response.status_code not in (200, 201, 204):
                             message = f"({response.status_code}) {codes.get(response.status_code)[0]}; {response.url} "
                             raise Failed(f"Database Download Failed Try Using Local Copy: {message} " + response.text.replace('\n', ' '))
+                        logger.info(f"Creating (again?): {temp_dir}")
                         os.makedirs(temp_dir, exist_ok=True)
 
                         filename = None
@@ -252,12 +262,21 @@ def run_imagemaid(attrs):
                         if not filename:
                             raise Failed("DB Filename not found")
                         filename = os.path.basename(filename)
+                        logger.info(f"Database filename: {filename}")
+                        
                         fullpath = os.path.join(temp_dir, filename)
+                        logger.info(f"Database full path: {fullpath}")
+                        
                         extension = os.path.splitext(fullpath)[-1]
+                        logger.info(f"extension: {extension}")
                         if not extension:
                             contenttype = response.headers.get('content-type')
+                            logger.info(f"NO extension; looking at contenttype: {contenttype}")
                             if contenttype and 'image' in contenttype:
                                 fullpath += contenttype.split('/')[1]
+                                logger.info(f"Database full path: {fullpath}")
+                            else:
+                                logger.info(f"NO CHANGE TO Database full path: {fullpath}")
 
                         with tqdm(unit='B', unit_scale=True, total=int(response.headers.get('content-length', 0)), desc=f"| {filename}") as bar:
                             with open(fullpath, 'wb') as handle:
@@ -265,17 +284,28 @@ def run_imagemaid(attrs):
                                     handle.write(chunk)
                                     bar.update(len(chunk))
 
+                        logger.info(f"Download complete: {fullpath}")
+                        
                         # check we want to unzip the contents
                         if fullpath.endswith('zip'):
+                            logger.info(f"This is a Zip archive: {fullpath}")
+                            logger.info(f"Extracting to: {temp_dir}")
                             with zipfile.ZipFile(fullpath, 'r') as handle:
                                 handle.extractall(temp_dir)
+                            logger.info(f"Zip archive successfully extracted: {fullpath}")
 
                         if backup_file := next((o for o in os.listdir(temp_dir) if str(o).startswith("databaseBackup")), None):
+                            logger.info(f"Doing backup to: {backup_file}")
                             shutil.move(os.path.join(temp_dir, backup_file), dbpath)
                     if os.path.exists(temp_dir):
+                        logger.info(f"Deleting: {temp_dir}")
                         shutil.rmtree(temp_dir)
+                        logger.info(f"Deleted: {temp_dir}")
+                        
                     if not os.path.exists(dbpath):
-                        raise Failed(f"File Error: Database File Could not {'Copied' if local_run else 'Downloaded'}")
+                        logger.info(f"DOES NOT EXIST: {dbpath}")
+                        raise Failed(f"File Error: Database File Could not be {'Copied' if local_run else 'Downloaded'}")
+                        
                     logger.info(f"Plex Database {'Copy' if local_run else 'Download'} Complete")
                     logger.info(f"Database {'Copied' if local_run else 'Downloaded'} to: {dbpath}")
                     logger.info(f"Runtime: {logger.runtime()}")
